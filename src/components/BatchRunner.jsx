@@ -5,12 +5,13 @@ import { downloadCSV, downloadJSON } from '../utils/export';
 import ReactMarkdown from 'react-markdown';
 import DataPolicyError from './DataPolicyError';
 
-export default function BatchRunner({ apiKey, models }) {
+export default function BatchRunner({ apiKey, models, rateLimitRemaining }) {
   const [prompt, setPrompt] = useState('');
   const [selectedModels, setSelectedModels] = useState(new Set());
   const [results, setResults] = useState([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [quotaWarning, setQuotaWarning] = useState(null);
   const abortRef = useRef(null);
 
   const toggleModel = (id) => {
@@ -33,12 +34,27 @@ export default function BatchRunner({ apiKey, models }) {
   const run = async () => {
     if (!prompt.trim() || selectedModels.size === 0) return;
 
+    // Check rate limit quota
+    if (rateLimitRemaining != null && selectedModels.size > rateLimitRemaining) {
+      if (rateLimitRemaining <= 0) {
+        setQuotaWarning('Daily limit reached. Cannot run batch.');
+        return;
+      }
+      setQuotaWarning(`You selected ${selectedModels.size} models but only have ${rateLimitRemaining} requests remaining. Running first ${rateLimitRemaining}.`);
+    } else {
+      setQuotaWarning(null);
+    }
+
     setRunning(true);
     setResults([]);
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const modelList = [...selectedModels];
+    let modelList = [...selectedModels];
+    // Trim to quota if constrained
+    if (rateLimitRemaining != null && modelList.length > rateLimitRemaining && rateLimitRemaining > 0) {
+      modelList = modelList.slice(0, rateLimitRemaining);
+    }
     setProgress({ done: 0, total: modelList.length });
 
     const concurrency = 3;
@@ -150,6 +166,13 @@ export default function BatchRunner({ apiKey, models }) {
               ))}
             </div>
           </div>
+
+          {/* Quota warning */}
+          {quotaWarning && (
+            <div className="mb-3 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
+              {quotaWarning}
+            </div>
+          )}
 
           {/* Run controls */}
           <div className="flex items-center gap-3 mb-6">

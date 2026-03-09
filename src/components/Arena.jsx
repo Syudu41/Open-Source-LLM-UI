@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react';
-import { Shuffle, Send, Eye, Trophy, RotateCcw, Download } from 'lucide-react';
-import { streamChat, classifyError } from '../utils/api';
+import { Shuffle, Send, Eye, Trophy, RotateCcw, Download, Zap } from 'lucide-react';
+import { streamChat, streamChatWithRetry, classifyError } from '../utils/api';
 import { downloadJSON } from '../utils/export';
 import ReactMarkdown from 'react-markdown';
 import Logo from './Logo';
 import DataPolicyError from './DataPolicyError';
 
-export default function Arena({ apiKey, models }) {
+export default function Arena({ apiKey, models, autoRetry, fallbackModels }) {
   const [modelA, setModelA] = useState('');
   const [modelB, setModelB] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -14,6 +14,8 @@ export default function Arena({ apiKey, models }) {
   const [responseB, setResponseB] = useState('');
   const [errorA, setErrorA] = useState(null);
   const [errorB, setErrorB] = useState(null);
+  const [fallbackA, setFallbackA] = useState(null);
+  const [fallbackB, setFallbackB] = useState(null);
   const [loading, setLoading] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [vote, setVote] = useState(null);
@@ -37,15 +39,21 @@ export default function Arena({ apiKey, models }) {
     setResponseB('');
     setErrorA(null);
     setErrorB(null);
+    setFallbackA(null);
+    setFallbackB(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
     const messages = [{ role: 'user', content: prompt.trim() }];
 
-    const streamTo = async (model, setter, setErr) => {
+    const streamTo = async (model, setter, setErr, setFb) => {
       try {
         let full = '';
-        for await (const chunk of streamChat(apiKey, model, messages, controller.signal)) {
+        const onFallback = (failed, next) => setFb({ from: failed, to: next });
+        const gen = autoRetry && fallbackModels?.length > 0
+          ? streamChatWithRetry(apiKey, model, messages, controller.signal, fallbackModels.filter((m) => m !== model), onFallback)
+          : streamChat(apiKey, model, messages, controller.signal);
+        for await (const chunk of gen) {
           full += chunk;
           setter(full);
         }
@@ -58,8 +66,8 @@ export default function Arena({ apiKey, models }) {
     };
 
     await Promise.all([
-      streamTo(modelA, setResponseA, setErrorA),
-      streamTo(modelB, setResponseB, setErrorB),
+      streamTo(modelA, setResponseA, setErrorA, setFallbackA),
+      streamTo(modelB, setResponseB, setErrorB, setFallbackB),
     ]);
     setLoading(false);
   };
@@ -80,6 +88,8 @@ export default function Arena({ apiKey, models }) {
     setResponseB('');
     setErrorA(null);
     setErrorB(null);
+    setFallbackA(null);
+    setFallbackB(null);
     setRevealed(false);
     setVote(null);
     setLoading(false);
@@ -173,6 +183,7 @@ export default function Arena({ apiKey, models }) {
                 const response = side === 'A' ? responseA : responseB;
                 const error = side === 'A' ? errorA : errorB;
                 const modelId = side === 'A' ? modelA : modelB;
+                const fb = side === 'A' ? fallbackA : fallbackB;
                 const errorType = error ? classifyError(error) : null;
                 return (
                   <div key={side} className="card">
@@ -184,6 +195,12 @@ export default function Arena({ apiKey, models }) {
                         <Trophy className="w-3.5 h-3.5 text-yellow-500" />
                       )}
                     </div>
+                    {fb && (
+                      <div className="flex items-center gap-1.5 text-2xs text-ink-3 mb-2">
+                        <Zap className="w-3 h-3" />
+                        <span>{fb.from.split('/').pop()} unavailable — using {fb.to.split('/').pop()}</span>
+                      </div>
+                    )}
                     <div className="text-sm leading-relaxed markdown-content min-h-[60px]">
                       {error ? (
                         <div className="text-sm">

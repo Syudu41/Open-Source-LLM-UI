@@ -1,24 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Square, Download, Trash2 } from 'lucide-react';
+import { Send, Square, Download, Trash2, Zap } from 'lucide-react';
 import MessageBubble from './MessageBubble';
 import Logo from './Logo';
 import DataPolicyError from './DataPolicyError';
 import { downloadJSON } from '../utils/export';
 
-export default function Chat({ chatHook, selectedModel, promptLibrary, systemPrompt }) {
+export default function Chat({ chatHook, selectedModel, promptLibrary, systemPrompt, autoRetry, fallbackModels, rateLimitRemaining }) {
   const { messages, isStreaming, send, stop, clear, retry } = chatHook;
   const [input, setInput] = useState('');
   const [dismissedPolicy, setDismissedPolicy] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
+  const rateLimitHit = rateLimitRemaining != null && rateLimitRemaining <= 0;
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSend = () => {
-    if (!input.trim() || isStreaming) return;
-    send(input, selectedModel, systemPrompt);
+    if (!input.trim() || isStreaming || rateLimitHit) return;
+    send(input, selectedModel, systemPrompt, { autoRetry, fallbackModels });
     setInput('');
   };
 
@@ -69,7 +71,17 @@ export default function Chat({ chatHook, selectedModel, promptLibrary, systemPro
               <DataPolicyError onDismiss={() => setDismissedPolicy(true)} />
             )}
             {messages.map((msg, i) => (
-              <MessageBubble key={i} message={msg} onRetry={msg.error && msg.retryContent ? () => retry(msg) : undefined} />
+              <div key={i}>
+                {msg.fallbackFrom && msg.role === 'assistant' && (
+                  <div className="flex items-center gap-1.5 text-2xs text-ink-3 mb-1 px-1">
+                    <Zap className="w-3 h-3" />
+                    <span>
+                      {msg.fallbackFrom.split('/').pop()} was unavailable — switched to {(msg.model || '').split('/').pop()}
+                    </span>
+                  </div>
+                )}
+                <MessageBubble message={msg} onRetry={msg.error && msg.retryContent ? () => retry(msg) : undefined} />
+              </div>
             ))}
             {isStreaming && messages[messages.length - 1]?.content === '' && (
               <div className="flex gap-3 items-center">
@@ -111,9 +123,9 @@ export default function Chat({ chatHook, selectedModel, promptLibrary, systemPro
             ) : (
               <button
                 onClick={handleSend}
-                disabled={!input.trim() || !selectedModel}
+                disabled={!input.trim() || !selectedModel || rateLimitHit}
                 className="btn-primary p-3 md:p-2.5 disabled:opacity-30"
-                title="Send"
+                title={rateLimitHit ? 'Daily limit reached' : 'Send'}
               >
                 <Send className="w-4 h-4" />
               </button>

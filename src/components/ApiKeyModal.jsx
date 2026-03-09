@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyRound, ArrowRight, Loader2, ExternalLink } from 'lucide-react';
-import { validateApiKey } from '../utils/api';
+import { validateApiKey, proactivePrivacyCheck } from '../utils/api';
 import Logo from './Logo';
 
 export default function ApiKeyModal({ onSubmit }) {
@@ -17,7 +17,10 @@ export default function ApiKeyModal({ onSubmit }) {
 
     const valid = await validateApiKey(key.trim());
     if (valid) {
-      onSubmit(key.trim());
+      // Proactive privacy check — non-blocking for login, but flags issue early
+      const privacyResult = await proactivePrivacyCheck(key.trim());
+      // Pass both key and privacy status to parent
+      onSubmit(key.trim(), privacyResult === 'DATA_POLICY');
     } else {
       setError('Invalid API key. Please check and try again.');
     }

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { streamChat, classifyError } from '../utils/api';
+import { streamChat, streamChatWithRetry, classifyError } from '../utils/api';
 
 export function useChat(apiKey) {
   const [messages, setMessages] = useState([]);
@@ -7,7 +7,7 @@ export function useChat(apiKey) {
   const abortRef = useRef(null);
 
   const send = useCallback(
-    async (userContent, model, systemPrompt) => {
+    async (userContent, model, systemPrompt, { autoRetry = false, fallbackModels = [] } = {}) => {
       if (!apiKey || !model || !userContent.trim()) return;
 
       const userMsg = { role: 'user', content: userContent.trim() };
@@ -32,9 +32,25 @@ export function useChat(apiKey) {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const onFallback = (failedModel, nextModel) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            fallbackFrom: failedModel,
+            model: nextModel,
+          };
+          return updated;
+        });
+      };
+
       try {
         let fullContent = '';
-        for await (const chunk of streamChat(apiKey, model, apiMessages, controller.signal)) {
+        const gen = autoRetry && fallbackModels.length > 0
+          ? streamChatWithRetry(apiKey, model, apiMessages, controller.signal, fallbackModels, onFallback)
+          : streamChat(apiKey, model, apiMessages, controller.signal);
+
+        for await (const chunk of gen) {
           fullContent += chunk;
           setMessages((prev) => {
             const updated = [...prev];

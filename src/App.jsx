@@ -15,6 +15,7 @@ import { useChat } from './hooks/useChat';
 import { usePromptLibrary } from './hooks/usePromptLibrary';
 import { getApiKey, setApiKey, clearApiKey } from './utils/storage';
 import { getRateLimitStatus } from './utils/api';
+import DataPolicyError from './components/DataPolicyError';
 
 const TABS = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -34,6 +35,7 @@ export default function App() {
   const [modelSearch, setModelSearch] = useState('');
   const [autoRetry, setAutoRetry] = useState(true);
   const [rateLimit, setRateLimit] = useState({ limit: null, remaining: null, resetTime: null });
+  const [dataPolicyIssue, setDataPolicyIssue] = useState(false);
 
   const { models, loading: modelsLoading, refresh: refreshModels } = useModels(apiKeyState);
   const chatHook = useChat(apiKeyState);
@@ -53,9 +55,10 @@ export default function App() {
       .map((m) => m.id);
   }, [models, selectedModel]);
 
-  const handleApiKey = useCallback((key) => {
+  const handleApiKey = useCallback((key, hasDataPolicyIssue = false) => {
     setApiKey(key);
     setApiKeyState(key);
+    if (hasDataPolicyIssue) setDataPolicyIssue(true);
   }, []);
 
   const handleLogout = useCallback(() => {
@@ -252,6 +255,19 @@ export default function App() {
               </div>
 
               <div className="mt-1.5 text-2xs text-ink-3 px-1">{models.length} free models</div>
+
+              {/* Auto-retry toggle */}
+              <label className="flex items-center gap-2 mt-2 px-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoRetry}
+                  onChange={(e) => setAutoRetry(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded border-surface-3 text-ink-0 focus:ring-0 cursor-pointer"
+                />
+                <span className="text-2xs text-ink-3 flex items-center gap-1">
+                  <Zap className="w-3 h-3" /> Auto-retry with available model
+                </span>
+              </label>
             </div>
           )}
         </div>
@@ -292,15 +308,27 @@ export default function App() {
         <div className="flex-1" />
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-surface-3 flex items-center justify-between">
-          <span className="text-2xs text-ink-3">{models.length} free models</span>
-          <button
-            onClick={handleLogout}
-            className="p-1.5 hover:bg-surface-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center"
-            title="Sign out"
-          >
-            <LogOut className="w-3.5 h-3.5 text-ink-3" />
-          </button>
+        <div className="px-4 py-3 border-t border-surface-3">
+          <div className="flex items-center justify-between">
+            <div className="text-2xs text-ink-3">
+              {rateLimit.remaining != null && rateLimit.remaining <= 9 ? (
+                <span className={rateLimit.remaining <= 4 ? 'text-orange-500 font-medium' : ''}>
+                  {rateLimit.remaining === 0
+                    ? `Daily limit reached${rateLimit.resetTime ? `. Resets ${new Date(rateLimit.resetTime).toLocaleTimeString()}` : ''}`
+                    : `${rateLimit.remaining} requests left`}
+                </span>
+              ) : (
+                <span>{models.length} free models</span>
+              )}
+            </div>
+            <button
+              onClick={handleLogout}
+              className="p-1.5 hover:bg-surface-2 rounded-lg transition-colors min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 flex items-center justify-center"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5 text-ink-3" />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -330,24 +358,36 @@ export default function App() {
         </header>
 
         {/* Content */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden flex flex-col">
+          {dataPolicyIssue && (
+            <div className="px-4 pt-3">
+              <div className="max-w-2xl mx-auto">
+                <DataPolicyError onDismiss={() => setDataPolicyIssue(false)} />
+              </div>
+            </div>
+          )}
+          <div className="flex-1 overflow-hidden">
           {tab === 'chat' && (
             <Chat
               chatHook={chatHook}
               selectedModel={selectedModel}
               promptLibrary={promptLibrary}
               systemPrompt={systemPrompt}
+              autoRetry={autoRetry}
+              fallbackModels={fallbackModels}
+              rateLimitRemaining={rateLimit.remaining}
             />
           )}
           {tab === 'arena' && (
-            <Arena apiKey={apiKeyState} models={models} />
+            <Arena apiKey={apiKeyState} models={models} autoRetry={autoRetry} fallbackModels={fallbackModels} />
           )}
           {tab === 'batch' && (
-            <BatchRunner apiKey={apiKeyState} models={models} />
+            <BatchRunner apiKey={apiKeyState} models={models} rateLimitRemaining={rateLimit.remaining} />
           )}
           {tab === 'prompts' && (
             <PromptLibrary library={promptLibrary} onUsePrompt={handleUsePrompt} />
           )}
+          </div>
         </main>
       </div>
     </div>
