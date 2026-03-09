@@ -53,6 +53,7 @@ npm run build
 
 - **Vite** + **React 18** + **Tailwind CSS**
 - **OpenRouter API** (OpenAI-compatible)
+
 - Zero backend — pure static site
 - Inter typeface
 
@@ -74,4 +75,4 @@ No servers. No databases. No tracking. Just models.
 MIT
 
 ----
-\copyright sbalaji
+Copyright © 2026 sbalaji
