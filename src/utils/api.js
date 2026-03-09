@@ -1,5 +1,33 @@
 const BASE_URL = 'https://openrouter.ai/api/v1';
 
+export function classifyError(errorMessage) {
+  const msg = (errorMessage || '').toLowerCase();
+  if (msg.includes('data policy') || msg.includes('privacy')) {
+    return 'DATA_POLICY';
+  }
+  if (msg.includes('provider returned error') || msg.includes('provider error')) {
+    return 'PROVIDER_DOWN';
+  }
+  if (msg.includes('rate limit') || msg.includes('429')) {
+    return 'RATE_LIMITED';
+  }
+  return 'UNKNOWN';
+}
+
+function friendlyErrorMessage(rawMessage) {
+  const type = classifyError(rawMessage);
+  if (type === 'DATA_POLICY') {
+    return 'Your OpenRouter privacy settings are blocking free models. Update your settings to continue.';
+  }
+  if (type === 'PROVIDER_DOWN') {
+    return "This model's provider is currently unavailable. Try a different model or retry in a moment.";
+  }
+  if (type === 'RATE_LIMITED') {
+    return 'Rate limited — please wait a moment and try again.';
+  }
+  return rawMessage;
+}
+
 export async function validateApiKey(apiKey) {
   try {
     const res = await fetch(`${BASE_URL}/auth/key`, {
@@ -39,7 +67,7 @@ export async function* streamChat(apiKey, model, messages, signal) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': window.location.origin,
-      'X-Title': 'LabLLM',
+      'X-Title': 'CfIA Lab OS-LLM-UI',
     },
     body: JSON.stringify({
       model,
@@ -51,7 +79,8 @@ export async function* streamChat(apiKey, model, messages, signal) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API error: ${res.status}`);
+    const raw = err?.error?.message || `API error: ${res.status}`;
+    throw new Error(friendlyErrorMessage(raw));
   }
 
   const reader = res.body.getReader();
@@ -90,7 +119,7 @@ export async function nonStreamChat(apiKey, model, messages, signal) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': window.location.origin,
-      'X-Title': 'LabLLM',
+      'X-Title': 'CfIA Lab OS-LLM-UI',
     },
     body: JSON.stringify({
       model,
@@ -104,7 +133,8 @@ export async function nonStreamChat(apiKey, model, messages, signal) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `API error: ${res.status}`);
+    const raw = err?.error?.message || `API error: ${res.status}`;
+    throw new Error(friendlyErrorMessage(raw));
   }
 
   const data = await res.json();

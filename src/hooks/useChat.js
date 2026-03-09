@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { streamChat } from '../utils/api';
+import { streamChat, classifyError } from '../utils/api';
 
 export function useChat(apiKey) {
   const [messages, setMessages] = useState([]);
@@ -44,12 +44,17 @@ export function useChat(apiKey) {
         }
       } catch (e) {
         if (e.name !== 'AbortError') {
+          const errorType = classifyError(e.message);
           setMessages((prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
               ...updated[updated.length - 1],
-              content: `Error: ${e.message}`,
+              content: e.message,
               error: true,
+              errorType,
+              retryContent: userContent.trim(),
+              retryModel: model,
+              retrySystemPrompt: systemPrompt,
             };
             return updated;
           });
@@ -62,6 +67,19 @@ export function useChat(apiKey) {
     [apiKey, messages]
   );
 
+  const retry = useCallback(
+    (msg) => {
+      if (!msg.retryContent || !msg.retryModel) return;
+      // Remove the failed assistant message before resending
+      setMessages((prev) => prev.filter((m) => m !== msg));
+      // Re-send with the same content (need small delay so state settles)
+      setTimeout(() => {
+        send(msg.retryContent, msg.retryModel, msg.retrySystemPrompt);
+      }, 0);
+    },
+    [send]
+  );
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -72,5 +90,5 @@ export function useChat(apiKey) {
     setIsStreaming(false);
   }, []);
 
-  return { messages, isStreaming, send, stop, clear };
+  return { messages, isStreaming, send, stop, clear, retry };
 }

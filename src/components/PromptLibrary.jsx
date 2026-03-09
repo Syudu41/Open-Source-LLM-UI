@@ -101,7 +101,7 @@ export default function PromptLibrary({ library, onUsePrompt }) {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => downloadJSON(prompts, `labllm-prompts-${Date.now()}.json`)}
+                onClick={() => downloadJSON(prompts, `os-llm-ui-prompts-${Date.now()}.json`)}
                 className="btn-ghost text-xs flex items-center gap-1"
                 disabled={prompts.length === 0}
               >

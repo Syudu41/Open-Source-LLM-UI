@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { KeyRound, ArrowRight, Loader2, ExternalLink } from 'lucide-react';
 import { validateApiKey } from '../utils/api';
+import Logo from './Logo';
 
 export default function ApiKeyModal({ onSubmit }) {
   const [key, setKey] = useState('');
@@ -27,10 +28,8 @@ export default function ApiKeyModal({ onSubmit }) {
     <div className="fixed inset-0 bg-white flex items-center justify-center p-6 z-50">
       <div className="w-full max-w-sm animate-fade-in">
         <div className="flex items-center gap-2.5 mb-8">
-          <div className="w-9 h-9 bg-ink-0 rounded-lg flex items-center justify-center">
-            <span className="text-white font-semibold text-sm">L</span>
-          </div>
-          <span className="text-lg font-semibold tracking-tight">LabLLM</span>
+          <Logo size={36} animate={true} className="text-ink-0" />
+          <span className="text-lg font-semibold tracking-tight">CfIA Lab Open Source LLM UI</span>
         </div>
 
         <h1 className="text-2xl font-semibold tracking-tight mb-2">Get started</h1>

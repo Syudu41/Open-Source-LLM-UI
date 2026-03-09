@@ -1,5 +1,5 @@
-const API_KEY_STORAGE = 'labllm_api_key';
-const PROMPTS_STORAGE = 'labllm_prompts';
+const API_KEY_STORAGE = 'os_llm_ui_api_key';
+const PROMPTS_STORAGE = 'os_llm_ui_prompts';
 
 export function getApiKey() {
   return sessionStorage.getItem(API_KEY_STORAGE) || '';
