@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: #111827;
+    color: #fff;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-ink-0 text-white text-sm font-medium rounded-lg
+           hover:bg-ink-1 active:scale-[0.98] transition-all duration-150;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-surface-2 text-ink-1 text-sm font-medium rounded-lg
+           hover:bg-surface-3 active:scale-[0.98] transition-all duration-150;
+  }
+
+  .btn-ghost {
+    @apply px-3 py-1.5 text-ink-2 text-sm rounded-lg
+           hover:bg-surface-2 active:scale-[0.98] transition-all duration-150;
+  }
+
+  .input-base {
+    @apply w-full px-3 py-2 text-sm bg-surface-1 border border-surface-3
+           rounded-lg outline-none focus:border-ink-3 focus:ring-1 focus:ring-ink-3/20
+           placeholder:text-ink-3 transition-all duration-150;
+  }
+
+  .card {
+    @apply bg-white border border-surface-3 rounded-xl p-4;
+  }
+}
+
+/* Markdown content styling */
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+.markdown-content h1 { font-size: 1.25rem; }
+.markdown-content h2 { font-size: 1.125rem; }
+.markdown-content h3 { font-size: 1rem; }
+.markdown-content p { margin-bottom: 0.75em; }
+.markdown-content ul, .markdown-content ol {
+  margin-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+.markdown-content ul { list-style-type: disc; }
+.markdown-content ol { list-style-type: decimal; }
+.markdown-content code {
+  font-family: 'SF Mono', Menlo, Monaco, monospace;
+  font-size: 0.85em;
+  background: #f3f4f6;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+.markdown-content pre {
+  margin-bottom: 0.75em;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.markdown-content pre code {
+  background: none;
+  padding: 0;
+}
+.markdown-content blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 1em;
+  color: #6b7280;
+  margin-bottom: 0.75em;
+}
+.markdown-content a {
+  color: #111827;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
