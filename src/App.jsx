@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   MessageSquare, Swords, FlaskConical, BookOpen,
   LogOut, Menu, X, ChevronDown, ChevronRight, RefreshCw,
-  Search, Check, Cpu,
+  Search, Check, Cpu, Zap,
 } from 'lucide-react';
 import Logo from './components/Logo';
 import ApiKeyModal from './components/ApiKeyModal';
@@ -14,6 +14,7 @@ import { useModels } from './hooks/useModels';
 import { useChat } from './hooks/useChat';
 import { usePromptLibrary } from './hooks/usePromptLibrary';
 import { getApiKey, setApiKey, clearApiKey } from './utils/storage';
+import { getRateLimitStatus } from './utils/api';
 
 const TABS = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -31,10 +32,26 @@ export default function App() {
   const [modelSectionOpen, setModelSectionOpen] = useState(true);
   const [systemPromptOpen, setSystemPromptOpen] = useState(false);
   const [modelSearch, setModelSearch] = useState('');
+  const [autoRetry, setAutoRetry] = useState(true);
+  const [rateLimit, setRateLimit] = useState({ limit: null, remaining: null, resetTime: null });
 
   const { models, loading: modelsLoading, refresh: refreshModels } = useModels(apiKeyState);
   const chatHook = useChat(apiKeyState);
   const promptLibrary = usePromptLibrary();
+
+  // Poll rate limit status after each render cycle (cheap — reads local var)
+  useEffect(() => {
+    const id = setInterval(() => setRateLimit(getRateLimitStatus()), 2000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Compute fallback models: top 3 available models that are not the currently selected
+  const fallbackModels = useMemo(() => {
+    return models
+      .filter((m) => m.health === 'available' && m.id !== selectedModel)
+      .slice(0, 3)
+      .map((m) => m.id);
+  }, [models, selectedModel]);
 
   const handleApiKey = useCallback((key) => {
     setApiKey(key);
@@ -67,10 +84,11 @@ export default function App() {
     }, 50);
   }, []);
 
-  // Auto-select first model when models load
+  // Auto-select first available model when models load
   useEffect(() => {
     if (models.length > 0 && !selectedModel) {
-      setSelectedModel(models[0].id);
+      const available = models.find((m) => m.health === 'available');
+      setSelectedModel(available ? available.id : models[0].id);
     }
   }, [models, selectedModel]);
 
@@ -78,11 +96,19 @@ export default function App() {
     return <ApiKeyModal onSubmit={handleApiKey} />;
   }
 
-  const filteredModels = models.filter(
-    (m) =>
-      (m.name || m.id).toLowerCase().includes(modelSearch.toLowerCase()) ||
-      m.id.toLowerCase().includes(modelSearch.toLowerCase())
-  );
+  const filteredModels = models
+    .filter(
+      (m) =>
+        (m.name || m.id).toLowerCase().includes(modelSearch.toLowerCase()) ||
+        m.id.toLowerCase().includes(modelSearch.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Sort: available first, then checking/unknown, then unavailable last
+      const order = { available: 0, checking: 1, unknown: 1, unavailable: 2 };
+      const diff = (order[a.health] ?? 1) - (order[b.health] ?? 1);
+      if (diff !== 0) return diff;
+      return (a.name || a.id).localeCompare(b.name || b.id);
+    });
 
   const selectedModelObj = models.find((m) => m.id === selectedModel);
   const selectedModelName = selectedModelObj
@@ -195,15 +221,28 @@ export default function App() {
                         setModelSearch('');
                       }}
                       className={`w-full text-left px-2 py-1.5 rounded-md transition-colors flex items-center gap-2 ${
+                        model.health === 'unavailable' ? 'opacity-40 ' : ''
+                      }${
                         model.id === selectedModel ? 'bg-surface-2 text-ink-0' : 'hover:bg-surface-2 text-ink-1'
                       }`}
                     >
+                      {/* Health dot */}
+                      {model.health === 'available' && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                      )}
+                      {model.health === 'unavailable' && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                      )}
+                      {model.health === 'checking' && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-pulse shrink-0" />
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium truncate">
                           {(model.name || model.id).split('/').pop()}
                         </div>
                         <div className="text-2xs text-ink-3 truncate">
                           {(model.context_length || 0).toLocaleString()} ctx
+                          {model.health === 'unavailable' && ' · May be unavailable'}
                         </div>
                       </div>
                       {model.id === selectedModel && <Check className="w-3.5 h-3.5 text-ink-0 shrink-0" />}
