@@ -1,4 +1,4 @@
-# LOpen-Source LLM UI 
+# Open-Source LLM UI 
 
 A minimalist research lab chat interface for free open-source models via OpenRouter. No backend, no database, zero dependencies beyond the browser.
 
