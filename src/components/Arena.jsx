@@ -1,19 +1,26 @@
 import { useState, useRef } from 'react';
-import { Shuffle, Send, Eye, Trophy, RotateCcw, Download } from 'lucide-react';
-import { streamChat } from '../utils/api';
+import { Shuffle, Send, Eye, Trophy, RotateCcw, Download, Zap } from 'lucide-react';
+import { streamChat, streamChatWithRetry, classifyError } from '../utils/api';
 import { downloadJSON } from '../utils/export';
 import ReactMarkdown from 'react-markdown';
+import Logo from './Logo';
+import DataPolicyError from './DataPolicyError';
 
-export default function Arena({ apiKey, models }) {
+export default function Arena({ apiKey, models, autoRetry, fallbackModels }) {
   const [modelA, setModelA] = useState('');
   const [modelB, setModelB] = useState('');
   const [prompt, setPrompt] = useState('');
   const [responseA, setResponseA] = useState('');
   const [responseB, setResponseB] = useState('');
+  const [errorA, setErrorA] = useState(null);
+  const [errorB, setErrorB] = useState(null);
+  const [fallbackA, setFallbackA] = useState(null);
+  const [fallbackB, setFallbackB] = useState(null);
   const [loading, setLoading] = useState(false);
   const [revealed, setRevealed] = useState(false);
-  const [vote, setVote] = useState(null); // 'A', 'B', 'tie'
+  const [vote, setVote] = useState(null);
   const [history, setHistory] = useState([]);
+  const [dismissedPolicy, setDismissedPolicy] = useState(false);
   const abortRef = useRef(null);
 
   const randomize = () => {
@@ -30,24 +37,38 @@ export default function Arena({ apiKey, models }) {
     setVote(null);
     setResponseA('');
     setResponseB('');
+    setErrorA(null);
+    setErrorB(null);
+    setFallbackA(null);
+    setFallbackB(null);
 
     const controller = new AbortController();
     abortRef.current = controller;
     const messages = [{ role: 'user', content: prompt.trim() }];
 
-    const streamTo = async (model, setter) => {
+    const streamTo = async (model, setter, setErr, setFb) => {
       try {
         let full = '';
-        for await (const chunk of streamChat(apiKey, model, messages, controller.signal)) {
+        const onFallback = (failed, next) => setFb({ from: failed, to: next });
+        const gen = autoRetry && fallbackModels?.length > 0
+          ? streamChatWithRetry(apiKey, model, messages, controller.signal, fallbackModels.filter((m) => m !== model), onFallback)
+          : streamChat(apiKey, model, messages, controller.signal);
+        for await (const chunk of gen) {
           full += chunk;
           setter(full);
         }
       } catch (e) {
-        if (e.name !== 'AbortError') setter(`Error: ${e.message}`);
+        if (e.name !== 'AbortError') {
+          setter('');
+          setErr(e.message);
+        }
       }
     };
 
-    await Promise.all([streamTo(modelA, setResponseA), streamTo(modelB, setResponseB)]);
+    await Promise.all([
+      streamTo(modelA, setResponseA, setErrorA, setFallbackA),
+      streamTo(modelB, setResponseB, setErrorB, setFallbackB),
+    ]);
     setLoading(false);
   };
 
@@ -65,6 +86,10 @@ export default function Arena({ apiKey, models }) {
     setPrompt('');
     setResponseA('');
     setResponseB('');
+    setErrorA(null);
+    setErrorB(null);
+    setFallbackA(null);
+    setFallbackB(null);
     setRevealed(false);
     setVote(null);
     setLoading(false);
@@ -84,7 +109,7 @@ export default function Arena({ apiKey, models }) {
             </div>
             {history.length > 0 && (
               <button
-                onClick={() => downloadJSON(history, `labllm-arena-${Date.now()}.json`)}
+                onClick={() => downloadJSON(history, `os-llm-ui-arena-${Date.now()}.json`)}
                 className="btn-ghost text-xs flex items-center gap-1"
               >
                 <Download className="w-3 h-3" /> Export ({history.length})
@@ -145,12 +170,21 @@ export default function Arena({ apiKey, models }) {
             </div>
           </div>
 
+          {/* Data policy error banner */}
+          {!dismissedPolicy && (errorA || errorB) &&
+            (classifyError(errorA) === 'DATA_POLICY' || classifyError(errorB) === 'DATA_POLICY') && (
+              <DataPolicyError onDismiss={() => setDismissedPolicy(true)} />
+          )}
+
           {/* Responses */}
-          {(responseA || responseB || loading) && (
-            <div className="grid grid-cols-2 gap-4 mb-6">
+          {(responseA || responseB || errorA || errorB || loading) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               {['A', 'B'].map((side) => {
                 const response = side === 'A' ? responseA : responseB;
+                const error = side === 'A' ? errorA : errorB;
                 const modelId = side === 'A' ? modelA : modelB;
+                const fb = side === 'A' ? fallbackA : fallbackB;
+                const errorType = error ? classifyError(error) : null;
                 return (
                   <div key={side} className="card">
                     <div className="flex items-center justify-between mb-3">
@@ -161,14 +195,26 @@ export default function Arena({ apiKey, models }) {
                         <Trophy className="w-3.5 h-3.5 text-yellow-500" />
                       )}
                     </div>
+                    {fb && (
+                      <div className="flex items-center gap-1.5 text-2xs text-ink-3 mb-2">
+                        <Zap className="w-3 h-3" />
+                        <span>{fb.from.split('/').pop()} unavailable — using {fb.to.split('/').pop()}</span>
+                      </div>
+                    )}
                     <div className="text-sm leading-relaxed markdown-content min-h-[60px]">
-                      {response ? (
+                      {error ? (
+                        <div className="text-sm">
+                          <p className={errorType === 'PROVIDER_DOWN' ? 'text-yellow-600' : 'text-red-500'}>
+                            {errorType === 'PROVIDER_DOWN'
+                              ? 'Model unavailable — try another'
+                              : error}
+                          </p>
+                        </div>
+                      ) : response ? (
                         <ReactMarkdown>{response}</ReactMarkdown>
                       ) : loading ? (
-                        <div className="flex gap-1 items-center text-ink-3">
-                          <span className="w-1.5 h-1.5 bg-ink-3 rounded-full animate-pulse-dot" />
-                          <span className="w-1.5 h-1.5 bg-ink-3 rounded-full animate-pulse-dot" style={{ animationDelay: '0.3s' }} />
-                          <span className="w-1.5 h-1.5 bg-ink-3 rounded-full animate-pulse-dot" style={{ animationDelay: '0.6s' }} />
+                        <div className="flex items-center justify-center py-4">
+                          <Logo size={20} animate={true} className="text-ink-3" />
                         </div>
                       ) : null}
                     </div>
@@ -178,8 +224,8 @@ export default function Arena({ apiKey, models }) {
             </div>
           )}
 
-          {/* Voting */}
-          {responseA && responseB && !loading && !vote && (
+          {/* Voting — skip if either side has an error */}
+          {responseA && responseB && !errorA && !errorB && !loading && !vote && (
             <div className="flex items-center justify-center gap-3">
               <button onClick={() => handleVote('A')} className="btn-secondary text-sm">
                 Model A wins
@@ -190,6 +236,13 @@ export default function Arena({ apiKey, models }) {
               <button onClick={() => handleVote('B')} className="btn-secondary text-sm">
                 Model B wins
               </button>
+            </div>
+          )}
+
+          {/* If one side errored, prompt user to re-run */}
+          {!loading && (errorA || errorB) && !(errorA && errorB) && (
+            <div className="text-center text-xs text-ink-3">
+              One model failed. You can re-run with different models or reset.
             </div>
           )}
 

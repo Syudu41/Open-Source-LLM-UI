@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { streamChat } from '../utils/api';
+import { streamChat, streamChatWithRetry, classifyError } from '../utils/api';
 
 export function useChat(apiKey) {
   const [messages, setMessages] = useState([]);
@@ -7,7 +7,7 @@ export function useChat(apiKey) {
   const abortRef = useRef(null);
 
   const send = useCallback(
-    async (userContent, model, systemPrompt) => {
+    async (userContent, model, systemPrompt, { autoRetry = false, fallbackModels = [] } = {}) => {
       if (!apiKey || !model || !userContent.trim()) return;
 
       const userMsg = { role: 'user', content: userContent.trim() };
@@ -32,9 +32,25 @@ export function useChat(apiKey) {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const onFallback = (failedModel, nextModel) => {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            fallbackFrom: failedModel,
+            model: nextModel,
+          };
+          return updated;
+        });
+      };
+
       try {
         let fullContent = '';
-        for await (const chunk of streamChat(apiKey, model, apiMessages, controller.signal)) {
+        const gen = autoRetry && fallbackModels.length > 0
+          ? streamChatWithRetry(apiKey, model, apiMessages, controller.signal, fallbackModels, onFallback)
+          : streamChat(apiKey, model, apiMessages, controller.signal);
+
+        for await (const chunk of gen) {
           fullContent += chunk;
           setMessages((prev) => {
             const updated = [...prev];
@@ -44,12 +60,17 @@ export function useChat(apiKey) {
         }
       } catch (e) {
         if (e.name !== 'AbortError') {
+          const errorType = classifyError(e.message);
           setMessages((prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
               ...updated[updated.length - 1],
-              content: `Error: ${e.message}`,
+              content: e.message,
               error: true,
+              errorType,
+              retryContent: userContent.trim(),
+              retryModel: model,
+              retrySystemPrompt: systemPrompt,
             };
             return updated;
           });
@@ -62,6 +83,19 @@ export function useChat(apiKey) {
     [apiKey, messages]
   );
 
+  const retry = useCallback(
+    (msg) => {
+      if (!msg.retryContent || !msg.retryModel) return;
+      // Remove the failed assistant message before resending
+      setMessages((prev) => prev.filter((m) => m !== msg));
+      // Re-send with the same content (need small delay so state settles)
+      setTimeout(() => {
+        send(msg.retryContent, msg.retryModel, msg.retrySystemPrompt);
+      }, 0);
+    },
+    [send]
+  );
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -72,5 +106,5 @@ export function useChat(apiKey) {
     setIsStreaming(false);
   }, []);
 
-  return { messages, isStreaming, send, stop, clear };
+  return { messages, isStreaming, send, stop, clear, retry };
 }

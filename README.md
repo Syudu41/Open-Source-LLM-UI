@@ -1,4 +1,4 @@
-# Open-Source LLM UI 
+# CfIA Lab Open Source LLM UI (OS-LLM-UI)
 
 A minimalist research lab chat interface for free open-source models via OpenRouter. No backend, no database, zero dependencies beyond the browser.
 
@@ -14,8 +14,8 @@ A minimalist research lab chat interface for free open-source models via OpenRou
 
 ```bash
 # Clone
-git clone https://github.com/YOUR_USERNAME/labllm.git
-cd labllm
+git clone https://github.com/Syudu41/Open-Source-LLM-UI.git
+cd Open-Source-LLM-UI
 
 # Install
 npm install

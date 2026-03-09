@@ -1,7 +1,26 @@
 import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { Copy, Check, User, Bot } from 'lucide-react';
+import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
+import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
+import jsx from 'react-syntax-highlighter/dist/esm/languages/prism/jsx';
+import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
+import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
+import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
+import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
+import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
+import { Copy, Check, User, Bot, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
+
+SyntaxHighlighter.registerLanguage('javascript', javascript);
+SyntaxHighlighter.registerLanguage('js', javascript);
+SyntaxHighlighter.registerLanguage('jsx', jsx);
+SyntaxHighlighter.registerLanguage('typescript', typescript);
+SyntaxHighlighter.registerLanguage('ts', typescript);
+SyntaxHighlighter.registerLanguage('tsx', tsx);
+SyntaxHighlighter.registerLanguage('json', json);
+SyntaxHighlighter.registerLanguage('bash', bash);
+SyntaxHighlighter.registerLanguage('sh', bash);
+SyntaxHighlighter.registerLanguage('python', python);
+SyntaxHighlighter.registerLanguage('py', python);
 
 const codeTheme = {
   'code[class*="language-"]': { color: '#374151', fontFamily: "'SF Mono', Menlo, monospace", fontSize: '0.8125rem', lineHeight: '1.5' },
@@ -34,7 +53,7 @@ function CopyButton({ text }) {
   );
 }
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, onRetry }) {
   const isUser = message.role === 'user';
 
   return (
@@ -47,17 +66,30 @@ export default function MessageBubble({ message }) {
 
       <div className={`max-w-[75%] ${isUser ? 'order-first' : ''}`}>
         {isUser ? (
-          <div className="bg-ink-0 text-white px-4 py-2.5 rounded-2xl rounded-br-md text-sm">
+          <div className="bg-ink-0 text-white px-5 py-3 rounded-2xl rounded-br-md text-sm">
             {message.content}
           </div>
         ) : (
-          <div className={`text-sm leading-relaxed ${message.error ? 'text-red-500' : 'text-ink-0'}`}>
+          <div className={`text-sm leading-relaxed border-l-2 border-surface-3 pl-3 ${message.error ? 'text-red-500' : 'text-ink-0'}`}>
             {message.model && (
               <span className="text-2xs text-ink-3 font-medium mb-1 block">
                 {message.model.split('/').pop()}
               </span>
             )}
             <div className="markdown-content">
+              {message.error ? (
+                <div>
+                  <p className="text-red-500 text-sm">{message.content}</p>
+                  {onRetry && (
+                    <button
+                      onClick={onRetry}
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs text-ink-2 hover:text-ink-0 transition-colors"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Retry
+                    </button>
+                  )}
+                </div>
+              ) : (
               <ReactMarkdown
                 components={{
                   code({ node, inline, className, children, ...props }) {
@@ -89,6 +121,7 @@ export default function MessageBubble({ message }) {
               >
                 {message.content}
               </ReactMarkdown>
+              )}
             </div>
           </div>
         )}

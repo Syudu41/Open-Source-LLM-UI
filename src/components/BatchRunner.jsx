@@ -1,15 +1,17 @@
 import { useState, useRef } from 'react';
-import { Play, Square, Download, CheckSquare, XSquare, Clock, Hash } from 'lucide-react';
-import { nonStreamChat } from '../utils/api';
+import { Play, Square, Download, CheckSquare, XSquare, Clock, Hash, ExternalLink } from 'lucide-react';
+import { nonStreamChat, classifyError } from '../utils/api';
 import { downloadCSV, downloadJSON } from '../utils/export';
 import ReactMarkdown from 'react-markdown';
+import DataPolicyError from './DataPolicyError';
 
-export default function BatchRunner({ apiKey, models }) {
+export default function BatchRunner({ apiKey, models, rateLimitRemaining }) {
   const [prompt, setPrompt] = useState('');
   const [selectedModels, setSelectedModels] = useState(new Set());
   const [results, setResults] = useState([]);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [quotaWarning, setQuotaWarning] = useState(null);
   const abortRef = useRef(null);
 
   const toggleModel = (id) => {
@@ -32,12 +34,27 @@ export default function BatchRunner({ apiKey, models }) {
   const run = async () => {
     if (!prompt.trim() || selectedModels.size === 0) return;
 
+    // Check rate limit quota
+    if (rateLimitRemaining != null && selectedModels.size > rateLimitRemaining) {
+      if (rateLimitRemaining <= 0) {
+        setQuotaWarning('Daily limit reached. Cannot run batch.');
+        return;
+      }
+      setQuotaWarning(`You selected ${selectedModels.size} models but only have ${rateLimitRemaining} requests remaining. Running first ${rateLimitRemaining}.`);
+    } else {
+      setQuotaWarning(null);
+    }
+
     setRunning(true);
     setResults([]);
     const controller = new AbortController();
     abortRef.current = controller;
 
-    const modelList = [...selectedModels];
+    let modelList = [...selectedModels];
+    // Trim to quota if constrained
+    if (rateLimitRemaining != null && modelList.length > rateLimitRemaining && rateLimitRemaining > 0) {
+      modelList = modelList.slice(0, rateLimitRemaining);
+    }
     setProgress({ done: 0, total: modelList.length });
 
     const concurrency = 3;
@@ -102,6 +119,9 @@ export default function BatchRunner({ apiKey, models }) {
   };
 
   const [expandedResult, setExpandedResult] = useState(null);
+  const [dismissedPolicy, setDismissedPolicy] = useState(false);
+
+  const hasDataPolicyError = !dismissedPolicy && results.some((r) => r.error && classifyError(r.error) === 'DATA_POLICY');
 
   return (
     <div className="flex flex-col h-full">
@@ -147,6 +167,13 @@ export default function BatchRunner({ apiKey, models }) {
             </div>
           </div>
 
+          {/* Quota warning */}
+          {quotaWarning && (
+            <div className="mb-3 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700">
+              {quotaWarning}
+            </div>
+          )}
+
           {/* Run controls */}
           <div className="flex items-center gap-3 mb-6">
             {running ? (
@@ -181,7 +208,7 @@ export default function BatchRunner({ apiKey, models }) {
                         response: r.content.slice(0, 500),
                         error: r.error || '',
                       })),
-                      `labllm-batch-${Date.now()}.csv`
+                      `os-llm-ui-batch-${Date.now()}.csv`
                     )
                   }
                   className="btn-ghost text-xs flex items-center gap-1"
@@ -192,7 +219,7 @@ export default function BatchRunner({ apiKey, models }) {
                   onClick={() =>
                     downloadJSON(
                       { prompt, results, timestamp: new Date().toISOString() },
-                      `labllm-batch-${Date.now()}.json`
+                      `os-llm-ui-batch-${Date.now()}.json`
                     )
                   }
                   className="btn-ghost text-xs flex items-center gap-1"
@@ -204,6 +231,9 @@ export default function BatchRunner({ apiKey, models }) {
           </div>
 
           {/* Results */}
+          {hasDataPolicyError && (
+            <DataPolicyError onDismiss={() => setDismissedPolicy(true)} />
+          )}
           {results.length > 0 && (
             <div className="space-y-2">
               {results
@@ -217,9 +247,18 @@ export default function BatchRunner({ apiKey, models }) {
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-semibold w-5 text-ink-3">#{i + 1}</span>
                         <span className="text-sm font-medium">{r.modelName}</span>
-                        {r.error && (
-                          <span className="text-2xs text-red-400 bg-red-50 px-2 py-0.5 rounded-full">Error</span>
-                        )}
+                        {r.error && (() => {
+                          const et = classifyError(r.error);
+                          if (et === 'PROVIDER_DOWN') return (
+                            <span className="text-2xs text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">Provider down</span>
+                          );
+                          if (et === 'DATA_POLICY') return (
+                            <span className="text-2xs text-red-400 bg-red-50 px-2 py-0.5 rounded-full">Privacy settings</span>
+                          );
+                          return (
+                            <span className="text-2xs text-red-400 bg-red-50 px-2 py-0.5 rounded-full">Error</span>
+                          );
+                        })()}
                       </div>
                       <div className="flex items-center gap-4 text-2xs text-ink-3">
                         <span className="flex items-center gap-1">
@@ -234,7 +273,19 @@ export default function BatchRunner({ apiKey, models }) {
                     {expandedResult === i && (
                       <div className="mt-3 pt-3 border-t border-surface-2 text-sm markdown-content animate-fade-in">
                         {r.error ? (
-                          <p className="text-red-500 text-xs">{r.error}</p>
+                          <div>
+                            <p className={classifyError(r.error) === 'PROVIDER_DOWN' ? 'text-yellow-600 text-xs' : 'text-red-500 text-xs'}>{r.error}</p>
+                            {classifyError(r.error) === 'DATA_POLICY' && (
+                              <a
+                                href="https://openrouter.ai/settings/privacy"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-ink-0 underline underline-offset-2 mt-1"
+                              >
+                                Open Privacy Settings <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
                         ) : (
                           <ReactMarkdown>{r.content}</ReactMarkdown>
                         )}
