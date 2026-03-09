@@ -1,4 +1,4 @@
-# LabLLM
+# LOpen-Source LLM UI 
 
 A minimalist research lab chat interface for free open-source models via OpenRouter. No backend, no database, zero dependencies beyond the browser.
 
@@ -72,3 +72,6 @@ No servers. No databases. No tracking. Just models.
 ## License
 
 MIT
+
+----
+\copyright sbalaji
